@@ -22,3 +22,7 @@ def test_dev_routes_require_admin_when_demo_mode_is_off(client,monkeypatch):
     allowed=client.post("/api/v1/dev/advance-time",headers={"Authorization":f"Bearer {token}"},json={"days":1})
     assert allowed.status_code==200
     client.post("/api/v1/dev/advance-time",headers={"Authorization":f"Bearer {token}"},json={"days":-1})
+    denied_reset=client.post("/api/v1/dev/reset-seed")
+    assert denied_reset.status_code==401
+    reset=client.post("/api/v1/dev/reset-seed",headers={"Authorization":f"Bearer {token}"})
+    assert reset.status_code==200 and reset.json()["status"]=="seed reset"

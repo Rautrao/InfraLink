@@ -14,6 +14,7 @@ def test_revision_reason_and_milestone_progress(client):
     assert revised.status_code==200 and revised.json()["old_target"]=="2026-11-20"
     detail=client.get(f"/api/v1/works/{work['id']}").json()
     assert detail["original_target_end"]=="2026-11-20" and detail["current_target_end"]=="2026-11-24"
+    assert detail["date_revisions"][0]["old"]=="2026-11-20" and detail["date_revisions"][0]["new"]=="2026-11-24"
     first=client.post(f"/api/v1/works/{work['id']}/milestones",headers=headers,json={"name":"Trenching","planned_date":"2026-11-05","pct":40})
     second=client.post(f"/api/v1/works/{work['id']}/milestones",headers=headers,json={"name":"Pipe laying","planned_date":"2026-11-10","pct":50})
     assert first.status_code==second.status_code==201

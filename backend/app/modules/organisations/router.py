@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from app.core.db import get_db
@@ -26,12 +27,12 @@ def zones(db=Depends(get_db)):
     return [{**dict(r), "id": str(r["id"]), "tenant_id": str(r["tenant_id"])} for r in rows]
 
 @router.get("/officers")
-def officers(ward_id: str | None = None, role: str | None = None, db=Depends(get_db), user=Depends(require_roles(*STAFF_ROLES))):
+def officers(ward_id: UUID | None = None, role: str | None = None, db=Depends(get_db), user=Depends(require_roles(*STAFF_ROLES))):
     filters = ["u.active", "u.role <> 'resident'", "(:is_admin or :is_auditor or u.tenant_id=:tenant)"]
     params = {"tenant": user["tenant_id"], "is_admin": user["role"] in ("admin", "commissioner", "chief_engineer"), "is_auditor": user["role"] == "auditor"}
     if ward_id:
         filters.append("u.ward_id=cast(:ward_id as uuid)")
-        params["ward_id"] = ward_id
+        params["ward_id"] = str(ward_id)
     if role:
         filters.append("u.role=:role")
         params["role"] = role

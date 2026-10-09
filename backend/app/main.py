@@ -92,5 +92,5 @@ def reset_seed(credentials=Depends(bearer)):
         if role != "admin": raise HTTPException(403, "Admin role required")
     from seed.seed import main as seed_demo_city
     reset()
-    seed_demo_city()
+    seed_demo_city(reset=True)
     return {"status":"seed reset"}

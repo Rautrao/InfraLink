@@ -1,9 +1,13 @@
 from conftest import login
+from app.modules.organisations.service import get_assignee
 
 def test_reference_directories_and_assignee(client):
     assert len(client.get("/api/v1/agencies").json()) >= 5
     assert len(client.get("/api/v1/wards").json()) == 4
     assert len(client.get("/api/v1/zones").json()) == 4
+    work_id=client.get("/api/v1/works?page_size=1").json()["items"][0]["id"]
+    assignee=get_assignee(work_id,1)
+    assert assignee and assignee["role"]=="junior_engineer"
     token = login(client, "je.ward1@demo.city")
     response = client.get("/api/v1/officers?ward_id=" + client.get("/api/v1/wards").json()[0]["id"], headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200

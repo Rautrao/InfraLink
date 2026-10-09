@@ -13,10 +13,12 @@ def get_assignee(work, level: int, session=None):
     owns_session = session is None
     db = session or SessionLocal()
     try:
-        if isinstance(work, (str, bytes, UUID)) or not isinstance(work, Mapping):
-            work_row = db.execute(text("select id,tenant_id,ward_id,agency_id from work where id=:id"), {"id": work}).mappings().first()
+        if isinstance(work, Mapping):
+            work_row=work
+        elif hasattr(work,"tenant_id") and hasattr(work,"id"):
+            work_row={"id":work.id,"tenant_id":work.tenant_id,"ward_id":getattr(work,"ward_id",None),"agency_id":getattr(work,"agency_id",None)}
         else:
-            work_row = work
+            work_row = db.execute(text("select id,tenant_id,ward_id,agency_id from work where id=:id"), {"id": work}).mappings().first()
         if not work_row:
             return None
         tenant_id = work_row["tenant_id"]

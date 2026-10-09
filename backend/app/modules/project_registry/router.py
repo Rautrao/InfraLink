@@ -11,7 +11,7 @@ from app.core.events import emit
 from app.core.audit import write_audit
 from app.core.pagination import paginate
 from app.core.security import check_jurisdiction, get_current_user, get_optional_user, require_roles
-from app.modules.geo_spatial.service import locate_ward, length_m
+from app.modules.geo_spatial.service import locate_ward, length_m, validate_city_geometry
 
 router = APIRouter()
 WORK_EDIT_ROLES = ("admin", "commissioner", "chief_engineer", "superintending_engineer", "executive_engineer", "assistant_engineer", "junior_engineer", "utility_editor")
@@ -155,7 +155,7 @@ def _detail(db, row, user):
         "contact": {"name": row["contact_name"], "phone_masked": contact_phone, "email": row["contact_email"], "channel": row["contact_channel"]},
         "road_name": row["road_name"], "ward": {"id": str(row["ward_id"]), "name": row["ward_name"]} if row["ward_id"] else None,
         "geometry": row["geometry_json"], "length_m": row["length_m"], "planned_start": row["planned_start"], "original_target_end": row["original_target_end"], "current_target_end": row["current_target_end"],
-        "date_revisions": [dict(x) for x in revisions], "pct_complete": row["pct_complete"], "milestones": [dict(x) for x in milestones],
+        "date_revisions": [{"old":x["old_target"],"new":x["new_target"],"reason_code":x["reason_code"],"explanation":x["explanation"],"at":x["at"]} for x in revisions], "pct_complete": row["pct_complete"], "milestones": [dict(x) for x in milestones],
         "disruption": {"type": row["disruption_type"], "note": row["disruption_note"]}, "last_update_at": row["last_update_at"],
         "updates": [{"text": x["text"], "pct_complete": x["pct_complete"], "at": x["at"]} for x in updates],
         "evidence": [{"public_url": x["public_path"], "taken_at": x["taken_at"], "kind": x["kind"]} for x in evidence],
@@ -202,7 +202,7 @@ def _filters(user, bbox, ward_id, road, category, agency_id, status, delayed, q)
 def ping(): return {"module": "project_registry", "status": "ready"}
 
 @router.get("/works")
-def list_works(bbox: str | None = None, ward_id: str | None = None, road: str | None = None, category: str | None = None, agency_id: str | None = None, status: str | None = None, delayed: bool | None = None, q: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db=Depends(get_db), user=Depends(get_optional_user)):
+def list_works(bbox: str | None = None, ward_id: UUID | None = None, road: str | None = None, category: WorkCategory | None = None, agency_id: UUID | None = None, status: WorkStatus | None = None, delayed: bool | None = None, q: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db=Depends(get_db), user=Depends(get_optional_user)):
     clauses, params = _filters(user, bbox, ward_id, road, category, agency_id, status, delayed, q)
     condition = " and ".join(clauses) or "true"
     total = db.execute(text(f"select count(*) from work w left join ward wd on wd.id=w.ward_id where {condition}"), params).scalar() or 0
@@ -218,7 +218,7 @@ def list_works(bbox: str | None = None, ward_id: str | None = None, road: str | 
     return {"items": [_list_item(row, user) for row in rows], "total": total, "page": page, "page_size": page_size}
 
 @router.get("/works/geojson")
-def works_geojson(bbox: str | None = None, ward_id: str | None = None, road: str | None = None, category: str | None = None, agency_id: str | None = None, status: str | None = None, delayed: bool | None = None, q: str | None = None, db=Depends(get_db), user=Depends(get_optional_user)):
+def works_geojson(bbox: str | None = None, ward_id: UUID | None = None, road: str | None = None, category: WorkCategory | None = None, agency_id: UUID | None = None, status: WorkStatus | None = None, delayed: bool | None = None, q: str | None = None, db=Depends(get_db), user=Depends(get_optional_user)):
     clauses, params = _filters(user, bbox, ward_id, road, category, agency_id, status, delayed, q)
     condition = " and ".join(clauses) or "true"
     rows = db.execute(text(f"""
@@ -245,13 +245,7 @@ def create_work(body: WorkCreate, db=Depends(get_db), user=Depends(require_roles
     if body.current_target_end and body.current_target_end != body.original_target_end:
         raise HTTPException(422, "original_target_end and current_target_end must match when creating a work")
     check_jurisdiction(user, agency_id=body.agency_id)
-    valid = db.execute(text("""
-        with g as (select ST_SetSRID(ST_GeomFromGeoJSON(:geometry),4326) geom), city as
-        (select ST_UnaryUnion(ST_Collect(boundary)) geom from ward where tenant_id=cast(:tenant as uuid) and boundary is not null)
-        select ST_IsValid(g.geom) and ST_GeometryType(g.geom) in ('ST_LineString','ST_Polygon') and ST_CoveredBy(g.geom,city.geom)
-        from g cross join city
-    """), {"geometry": json.dumps(body.geometry), "tenant": str(user["tenant_id"])}).scalar()
-    if not valid: raise HTTPException(422, "geometry must be a valid LineString or Polygon inside the city")
+    if not validate_city_geometry(body.geometry,user["tenant_id"],db): raise HTTPException(422, "geometry must be a valid LineString or Polygon inside the city")
     ward_id = locate_ward(body.geometry, db, user["tenant_id"])
     if not ward_id: raise HTTPException(422, "geometry does not intersect a city ward")
     check_jurisdiction(user, ward_id=ward_id, agency_id=body.agency_id)
@@ -290,8 +284,7 @@ def patch_work(work_id: UUID, body: WorkPatch, db=Depends(get_db), user=Depends(
         else: expression=f":{key}"
         assignments.append(f"{key}={expression}"); params[key]=value
     if geometry_value is not None:
-        valid=db.execute(text("select ST_IsValid(ST_SetSRID(ST_GeomFromGeoJSON(:g),4326)) and ST_CoveredBy(ST_SetSRID(ST_GeomFromGeoJSON(:g),4326),(select ST_UnaryUnion(ST_Collect(boundary)) from ward where tenant_id=cast(:tenant as uuid)))"),{"g":json.dumps(geometry_value),"tenant":str(user["tenant_id"])}).scalar()
-        if not valid: raise HTTPException(422,"geometry must be valid and inside the city")
+        if not validate_city_geometry(geometry_value,user["tenant_id"],db): raise HTTPException(422,"geometry must be valid and inside the city")
         new_ward=locate_ward(geometry_value,db,user["tenant_id"])
         assignments.extend(["geometry=ST_SetSRID(ST_GeomFromGeoJSON(:geometry),4326)","length_m=:length_m","ward_id=cast(:ward_id as uuid)"])
         params.update({"geometry":json.dumps(geometry_value),"length_m":length_m(geometry_value,db),"ward_id":str(new_ward)})
