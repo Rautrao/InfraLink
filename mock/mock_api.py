@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 app=FastAPI(title="Public Works Mock API")
@@ -29,3 +29,43 @@ def public_feedback(work_id:str): return {"items":[],"total":0}
 @app.get("/reports/summary")
 def summary():
     return {"by_status":{"ongoing":3,"planned":3,"permitted":2,"completed":2},"by_ward":[{"ward":"Ward 1","count":3},{"ward":"Ward 2","count":3}],"by_agency":[],"delayed_count":2,"overdue_updates_count":1,"open_conflicts":2,"repeat_dig_segments":1,"feedback":{"open":4,"overdue":1}}
+
+@app.post("/works/{work_id}/updates", status_code=201)
+async def mock_add_update(work_id: str, request: Request):
+    data = await request.json()
+    work = next((w for w in works if w["id"] == work_id), None)
+    if work is None: raise HTTPException(404, "Work not found")
+    if "pct_complete" in data and data["pct_complete"] is not None:
+        work["pct_complete"] = data["pct_complete"]
+    work["last_update_at"] = "2026-10-10T10:00:00Z"
+    work.setdefault("updates", []).append({
+        "text": data.get("text", ""),
+        "pct_complete": data.get("pct_complete"),
+        "at": "2026-10-10T10:00:00Z",
+        "department": work.get("agency", {}).get("name")
+    })
+    return {"status": "ok", "last_update_at": work["last_update_at"], "pct_complete": work["pct_complete"]}
+
+@app.post("/works/{work_id}/evidence", status_code=201)
+async def mock_add_evidence(work_id: str, request: Request):
+    work = next((w for w in works if w["id"] == work_id), None)
+    if work is None: raise HTTPException(404, "Work not found")
+    form = await request.form()
+    kind = form.get("kind", "progress")
+    lat = form.get("lat")
+    lon = form.get("lon")
+    taken_at = form.get("taken_at", "2026-10-10T10:00:00Z")
+    ev = {
+        "id": f"mock-ev-{len(work.setdefault('evidence', [])) + 1}",
+        "kind": kind,
+        "taken_at": taken_at,
+        "lat": float(lat) if lat else None,
+        "lon": float(lon) if lon else None,
+        "public_url": "/demo-evidence.jpg"
+    }
+    work["evidence"].append(ev)
+    if kind == "restoration":
+        work["pct_complete"] = 100
+        work["status"] = "restoration_verified"
+    return {"status": "ok", "evidence": ev}
+
