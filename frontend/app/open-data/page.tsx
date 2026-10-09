@@ -1,0 +1,5 @@
+'use client';
+import { useT } from '@/lib/i18n';
+import { Card } from '@/components/ui';
+const base=process.env.NEXT_PUBLIC_API_BASE??'http://localhost:8000/api/v1';
+export default function OpenData(){const {t}=useT();return <main className="page-wrap page-narrow"><span className="eyebrow">Demo City</span><h1 className="page-title">{t('openDataTitle')}</h1><p className="page-lede">{t('openDataDescription')}</p><div className="detail-column"><Card><h2>{t('works')}</h2><p>{t('openDataWorksDescription')}</p><div className="link-row"><a className="ui-button ui-button-primary" href={`${base}/open/works.geojson`} target="_blank" rel="noreferrer">{t('downloadGeo')}</a><a className="ui-button ui-button-secondary" href={`${base}/open/works.csv`} target="_blank" rel="noreferrer">{t('downloadCsv')}</a></div></Card><Card><h2>{t('dashboard')}</h2><p>{t('openDataStatsDescription')}</p><a className="ui-button ui-button-secondary" href={`${base}/open/stats.json`} target="_blank" rel="noreferrer">{t('downloadStats')}</a></Card></div></main>;}

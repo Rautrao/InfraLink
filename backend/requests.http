@@ -1,0 +1,198 @@
+@api = http://localhost:8000/api/v1
+@workGeometry = {"type":"LineString","coordinates":[[73.8200,18.5100],[73.8240,18.5120]]}
+
+### Health
+GET http://localhost:8000/healthz
+
+### Staff login
+# @name staffLogin
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{"email":"je.ward1@demo.city","password":"demo1234"}
+
+### Admin login
+# @name adminLogin
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{"email":"admin@demo.city","password":"demo1234"}
+
+### Resident OTP request (OTP 123456 is printed in backend logs)
+POST {{api}}/auth/otp/request
+Content-Type: application/json
+
+{"phone":"9000000001"}
+
+### Resident OTP verify
+# @name residentLogin
+POST {{api}}/auth/otp/verify
+Content-Type: application/json
+
+{"phone":"9000000001","otp":"123456"}
+
+### Current staff
+GET {{api}}/auth/me
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+
+### Public reference data
+GET {{api}}/agencies
+
+### Wards with boundaries
+GET {{api}}/wards
+
+### Zones
+GET {{api}}/zones
+
+### Escalation ladder
+GET {{api}}/escalation-ladder
+
+### Officers (staff)
+GET {{api}}/officers?role=junior_engineer
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+
+### Public config
+GET {{api}}/config/public
+
+### List and filter public works
+GET {{api}}/works?page=1&page_size=20&road=MG%20Road
+
+### Map GeoJSON
+GET {{api}}/works/geojson?bbox=73.83,18.48,73.8567,18.56
+
+### Create a work (replace agency_id with an agency UUID from GET /agencies)
+# @name createWork
+POST {{api}}/works
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "title":"HTTP demo water service work",
+  "purpose":"Replace a short section of a public service line",
+  "category":"water_pipeline",
+  "agency_id":"replace-with-agency-uuid",
+  "geometry":{{workGeometry}},
+  "planned_start":"2026-11-01",
+  "original_target_end":"2026-11-20",
+  "road_name":"Sample Road",
+  "contractor_name":"Demo City Civil Works",
+  "contractor_public":true,
+  "contact_name":"Site Office",
+  "contact_phone":"+919876540123",
+  "contact_email":"works@demo.city",
+  "contact_channel":"office",
+  "disruption_type":"none",
+  "is_public":true
+}
+
+### Work detail (public fields)
+GET {{api}}/works/{{createWork.response.body.id}}
+
+### Patch work and generate a closure notice event
+PATCH {{api}}/works/{{createWork.response.body.id}}
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"disruption_type":"partial_closure","disruption_note":"Follow the signed diversion."}
+
+### Date revision (explanation is required; current_target_end cannot be patched)
+POST {{api}}/works/{{createWork.response.body.id}}/dates
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"new_target_end":"2026-11-25","reason_code":"material_delay","explanation":"Supplier delivery moved after the shipment confirmation."}
+
+### Add milestone
+# @name createMilestone
+POST {{api}}/works/{{createWork.response.body.id}}/milestones
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"name":"Trench and install service","planned_date":"2026-11-05","pct":25,"sort":1}
+
+### Complete milestone (actual_date sets pct to 100)
+PATCH {{api}}/milestones/{{createMilestone.response.body.id}}
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"actual_date":"2026-11-05"}
+
+### Status transitions: planned -> paused
+POST {{api}}/works/{{createWork.response.body.id}}/status
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"to_status":"paused","reason_code":"utility_clash","explanation":"Pause while the nearby service alignment is reviewed."}
+
+### Status transitions: paused -> ongoing
+POST {{api}}/works/{{createWork.response.body.id}}/status
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"to_status":"ongoing"}
+
+### Progress update
+POST {{api}}/works/{{createWork.response.body.id}}/updates
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"text":"Installation is complete and the site is ready for restoration review.","pct_complete":100}
+
+### Status transitions: ongoing -> completed -> restoration_verified (evidence stub currently allows it)
+POST {{api}}/works/{{createWork.response.body.id}}/status
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"to_status":"completed"}
+
+### Restore verified
+POST {{api}}/works/{{createWork.response.body.id}}/status
+Authorization: Bearer {{staffLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"to_status":"restoration_verified"}
+
+### Merged work timeline
+GET {{api}}/works/{{createWork.response.body.id}}/history
+
+### Audit list and verification (admin/auditor/commissioner)
+GET {{api}}/audit?entity=work&page=1&page_size=20
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+GET {{api}}/audit/verify
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+### Read and update city configuration (admin only)
+GET {{api}}/admin/config
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+PUT {{api}}/admin/config
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+Content-Type: application/json
+
+{"buffer_m":15,"lookback_months":24,"overdue_days":7,"sla_day_ae":3,"sla_day_ee":7,"sla_day_se":14,"sla_time_scale":1,"reason_codes":["weather","material_delay","contractor_delay","utility_clash","permit_delay","funds_delay","design_change","public_safety","court_order","force_majeure","other"],"features":{}}
+
+### Advance demo clock (public only when DEV_MODE=true; otherwise admin)
+POST {{api}}/dev/advance-time
+Content-Type: application/json
+
+{"days":1}
+
+### Reset the Demo City seed (destructive within the demo tenant)
+POST {{api}}/dev/reset-seed
+
+### Module scaffold pings
+GET {{api}}/organisations/ping
+GET {{api}}/project_registry/ping
+GET {{api}}/schedule_milestones/ping
+GET {{api}}/audit/ping
+GET {{api}}/admin_config/ping
+GET {{api}}/imports/ping
+GET {{api}}/geo_spatial/ping
+GET {{api}}/permits/ping
+GET {{api}}/conflict_engine/ping
+GET {{api}}/evidence/ping
+GET {{api}}/citizen_feedback/ping
+GET {{api}}/notifications/ping
+GET {{api}}/reporting/ping
+GET {{api}}/public_api/ping

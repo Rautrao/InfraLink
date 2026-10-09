@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from apscheduler.schedulers.background import BackgroundScheduler
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from app.core.config import settings
 from app.core.db import engine, SessionLocal
@@ -17,6 +18,9 @@ from app.modules.identity_access.router import router as identity_router
 
 MODULES = ["organisations","project_registry","schedule_milestones","audit","admin_config","imports","geo_spatial","permits","conflict_engine","evidence","citizen_feedback","notifications","reporting","public_api"]
 scheduler = BackgroundScheduler(timezone="UTC")
+
+class AdvanceTimeBody(BaseModel):
+    days: int = Field(ge=-3650, le=3650)
 
 def apply_schema():
     with engine.begin() as conn:
@@ -33,11 +37,16 @@ def dispatch_events():
         try: dispatch_batch(session)
         except Exception: session.rollback()
 
+def scan_overdue_updates():
+    from app.core.jobs import check_overdue_updates
+    check_overdue_updates()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     apply_schema()
     if not scheduler.running:
         scheduler.add_job(dispatch_events,"interval",seconds=2,id="outbox",replace_existing=True)
+        scheduler.add_job(scan_overdue_updates,"interval",minutes=5,id="overdue_updates",replace_existing=True)
         scheduler.start()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     yield
@@ -62,18 +71,16 @@ app.mount("/files", StaticFiles(directory=settings.upload_dir), name="files")
 def healthz(): return {"status":"ok"}
 
 @app.post("/api/v1/dev/advance-time")
-def advance_time(body: dict, credentials=Depends(bearer)):
+def advance_time(body: AdvanceTimeBody, credentials=Depends(bearer)):
     if not settings.dev_mode:
         if not credentials: raise HTTPException(401, "Authentication required")
         claims = decode_token(credentials.credentials)
         with SessionLocal() as db:
             role = db.execute(text("select role from app_user where id=:id and active"), {"id":claims["sub"]}).scalar()
         if role != "admin": raise HTTPException(403, "Admin role required")
-    days = int(body.get("days", 0))
-    if abs(days) > 3650: raise HTTPException(422, "days must be within +/- 3650")
-    advance(days)
+    advance(body.days)
     from app.core.clock import now
-    return {"now": now().isoformat(), "advanced_days": days}
+    return {"now": now().isoformat(), "advanced_days": body.days}
 
 @app.post("/api/v1/dev/reset-seed")
 def reset_seed(credentials=Depends(bearer)):
@@ -85,5 +92,5 @@ def reset_seed(credentials=Depends(bearer)):
         if role != "admin": raise HTTPException(403, "Admin role required")
     from seed.seed import main as seed_demo_city
     reset()
-    seed_demo_city()
+    seed_demo_city(reset=True)
     return {"status":"seed reset"}

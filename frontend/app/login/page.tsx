@@ -1,0 +1,11 @@
+'use client';
+import { FormEvent, useState } from 'react';
+import { api } from '@/lib/api';
+import { useT } from '@/lib/i18n';
+import { Button, Card, Input, toast } from '@/components/ui';
+
+export default function LoginPage(){const {t}=useT();const [phone,setPhone]=useState('');const [otp,setOtp]=useState('');const [requested,setRequested]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  async function request(event:FormEvent){event.preventDefault();setBusy(true);setError('');try{await api('/auth/otp/request',{method:'POST',body:JSON.stringify({phone})});setRequested(true);toast(t('otpSent'));}catch(e){setError(e instanceof Error?e.message:t('error'));}finally{setBusy(false);}}
+  async function verify(event:FormEvent){event.preventDefault();setBusy(true);setError('');try{const result=await api<{access_token:string}>('/auth/otp/verify',{method:'POST',body:JSON.stringify({phone,otp})});localStorage.setItem('access_token',result.access_token);window.location.href=new URLSearchParams(window.location.search).get('next')??'/works';}catch(e){setError(e instanceof Error?e.message:t('error'));}finally{setBusy(false);}}
+  return <main className="page-wrap page-narrow"><span className="eyebrow">{t('brand')}</span><h1 className="page-title">{t('otpTitle')}</h1><Card><p>{t('signInToFollow')}</p>{!requested?<form onSubmit={request}><label className="form-label" htmlFor="phone">{t('phone')}</label><Input id="phone" type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="9000000001" required/><p className="field-hint">{t('phonePrivacy')}</p><Button type="submit" disabled={busy}>{busy?t('loading'):t('requestOtp')}</Button></form>:<form onSubmit={verify}><label className="form-label" htmlFor="otp">{t('otp')}</label><Input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))} required/><p className="field-hint">{t('otpHint')}</p><Button type="submit" disabled={busy}>{busy?t('loading'):t('verify')}</Button><Button type="button" tone="quiet" onClick={()=>setRequested(false)}>{t('changePhone')}</Button></form>}{error&&<p role="alert" className="form-error">{error}</p>}</Card></main>;
+}
