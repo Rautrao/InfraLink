@@ -30,6 +30,9 @@ def apply_schema():
         if not complete:
             schema = Path(__file__).resolve().parents[1] / "sql" / "001_schema.sql"
             conn.exec_driver_sql(schema.read_text(encoding="utf-8"))
+        else:
+            conn.exec_driver_sql("ALTER TABLE feedback_ticket ADD COLUMN IF NOT EXISTS overdue_public boolean NOT NULL DEFAULT false")
+            conn.exec_driver_sql("ALTER TABLE notification ADD COLUMN IF NOT EXISTS read_at timestamptz")
 
 def dispatch_events():
     from app.core.events import dispatch_batch
@@ -41,12 +44,27 @@ def scan_overdue_updates():
     from app.core.jobs import check_overdue_updates
     check_overdue_updates()
 
+def scan_feedback_sla():
+    from app.modules.citizen_feedback.router import escalate_feedback
+    escalate_feedback()
+
+def notify_starting_tomorrow():
+    from app.modules.notifications.router import notify_starting_tomorrow as send_starting
+    send_starting()
+
+def scan_conflicts_nightly():
+    from app.modules.conflict_engine.router import scan_all_conflicts
+    scan_all_conflicts()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     apply_schema()
     if not scheduler.running:
         scheduler.add_job(dispatch_events,"interval",seconds=2,id="outbox",replace_existing=True)
         scheduler.add_job(scan_overdue_updates,"interval",minutes=5,id="overdue_updates",replace_existing=True)
+        scheduler.add_job(scan_feedback_sla,"interval",minutes=1,id="feedback_sla",replace_existing=True)
+        scheduler.add_job(notify_starting_tomorrow,"interval",hours=1,id="starting_tomorrow",replace_existing=True)
+        scheduler.add_job(scan_conflicts_nightly,"interval",hours=24,id="conflict_scan",replace_existing=True)
         scheduler.start()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     yield
@@ -80,7 +98,9 @@ def advance_time(body: AdvanceTimeBody, credentials=Depends(bearer)):
         if role != "admin": raise HTTPException(403, "Admin role required")
     advance(body.days)
     from app.core.clock import now
-    return {"now": now().isoformat(), "advanced_days": body.days}
+    from app.modules.citizen_feedback.router import escalate_feedback
+    escalated=escalate_feedback()
+    return {"now": now().isoformat(), "advanced_days": body.days, "feedback_escalated": escalated}
 
 @app.post("/api/v1/dev/reset-seed")
 def reset_seed(credentials=Depends(bearer)):
