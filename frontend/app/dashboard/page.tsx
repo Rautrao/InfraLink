@@ -1,9 +1,47 @@
 'use client';
-import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useT } from '@/lib/i18n';
-import { Badge, Card, ErrorState, LastUpdated, Skeleton } from '@/components/ui';
-type Summary={by_status?:Record<string,number>;by_ward?:{ward:string;count:number}[];by_agency?:{agency:string;count:number}[];delayed_count?:number;overdue_updates_count?:number;open_conflicts?:number;repeat_dig_segments?:number;feedback?:{open:number;overdue:number};last_updated_at?:string};
-export default function Dashboard(){const {t}=useT();const query=useQuery({queryKey:['summary'],queryFn:()=>api<Summary>('/reports/summary')});if(query.isLoading)return <main className="page-wrap"><Skeleton className="skeleton-card"/></main>;if(query.isError||!query.data)return <main className="page-wrap"><ErrorState onRetry={()=>query.refetch()}/></main>;const data=query.data;return <main className="page-wrap"><span className="eyebrow">Demo City</span><h1 className="page-title">{t('dashboard')}</h1><p className="page-lede">{t('citySummary')}</p><div className="quick-stats"><Stat title={t('ongoing')} value={data.by_status?.ongoing??0}/><Stat title={t('delayed')} value={data.delayed_count??0} alert/><Stat title={t('updateOverdue')} value={data.overdue_updates_count??0} alert/><Stat title={t('openConflicts')} value={data.open_conflicts??0}/><Stat title={t('repeatDig')} value={data.repeat_dig_segments??0}/><Stat title={t('feedbackOpen')} value={data.feedback?.open??0}/></div><div className="section-head"><h2>{t('byStatus')}</h2></div><Card className="status-summary">{Object.entries(data.by_status??{}).map(([status,count])=><Link key={status} href={`/works?status=${status}`}><Badge>{t(status as any)} · {count}</Badge></Link>)}</Card>{data.by_ward?.length&&<><div className="section-head"><h2>{t('byWard')}</h2></div><Card><div className="table-responsive"><table className="summary-table"><thead><tr><th>{t('ward')}</th><th>{t('works')}</th></tr></thead><tbody>{data.by_ward.map((item,index)=><tr key={index}><td>{item.ward}</td><td>{item.count}</td></tr>)}</tbody></table></div></Card></>}<LastUpdated value={data.last_updated_at}/></main>;}
-function Stat({title,value,alert=false}:{title:string;value:number;alert?:boolean}){return <Card className="stat-card"><span className={`stat-icon ${alert?'stat-delay':'stat-current'}`}>{title}</span><strong>{value}</strong></Card>}
+import { Card, Button, Skeleton, EmptyState } from '@/components/ui';
+import { Download } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import Link from 'next/link';
+
+const BarChart = dynamic(() => import("recharts").then(m => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then(m => m.Bar), { ssr: false });
+const PieChart = dynamic(() => import("recharts").then(m => m.PieChart), { ssr: false });
+const Pie = dynamic(() => import("recharts").then(m => m.Pie), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then(m => m.Tooltip), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then(m => m.ResponsiveContainer), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then(m => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then(m => m.YAxis), { ssr: false });
+
+export default function DashboardPage() {
+  const { data, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: () => api<any>('/reports/summary').catch(() => null) });
+  
+  if (isLoading) return <div className="p-8"><Skeleton className="h-64 mb-4" /></div>;
+  if (!data) return <div className="p-8"><EmptyState title="Dashboard data unavailable" /></div>;
+
+  return (
+    <div className="p-8 space-y-8 max-w-7xl mx-auto">
+      <div className="flex justify-between items-center flex-wrap gap-4">
+        <h1 className="text-3xl font-bold">Public Accountability Dashboard</h1>
+        <div className="flex gap-2">
+          <Link href="/api/v1/public_api/works.csv" download>
+            <Button tone="secondary"><Download className="w-4 h-4 mr-2 inline" /> CSV</Button>
+          </Link>
+          <Link href="/api/v1/public_api/works.geojson" download>
+            <Button tone="secondary"><Download className="w-4 h-4 mr-2 inline" /> GeoJSON</Button>
+          </Link>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card className="p-4 text-center"><h3 className="text-sm text-gray-500">Total Works</h3><div className="text-2xl font-bold">{data.kpi?.total || 0}</div></Card>
+        <Card className="p-4 text-center"><h3 className="text-sm text-gray-500">Ongoing</h3><div className="text-2xl font-bold">{data.kpi?.ongoing || 0}</div></Card>
+        <Card className="p-4 text-center border-orange-200 bg-orange-50"><h3 className="text-sm text-orange-600">Delayed</h3><div className="text-2xl font-bold text-orange-700">{data.kpi?.delayed || 0}</div></Card>
+        <Card className="p-4 text-center border-red-200 bg-red-50"><h3 className="text-sm text-red-600">Updates Overdue</h3><div className="text-2xl font-bold text-red-700">{data.kpi?.update_overdue || 0}</div></Card>
+        <Card className="p-4 text-center border-green-200 bg-green-50"><h3 className="text-sm text-green-600">Completed (Month)</h3><div className="text-2xl font-bold text-green-700">{data.kpi?.completed_month || 0}</div></Card>
+      </div>
+    </div>
+  );
+}
