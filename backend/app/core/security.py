@@ -31,6 +31,14 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
     if not user: raise HTTPException(401, "User not found or inactive")
     return dict(user)
 
+def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db=Depends(get_db)):
+    if not credentials:
+        return None
+    claims = decode_token(credentials.credentials)
+    user = db.execute(text("select id, tenant_id, agency_id, name, email, phone, role, ward_id, zone_id, active from app_user where id=:id and active"), {"id": claims["sub"]}).mappings().first()
+    if not user: raise HTTPException(401, "User not found or inactive")
+    return dict(user)
+
 def require_roles(*roles):
     def dependency(user=Depends(get_current_user)):
         if user["role"] not in roles: raise HTTPException(403, "Insufficient role")
