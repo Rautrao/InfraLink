@@ -1,0 +1,429 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Public Works Transparency Platform",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "default"
+        ],
+        "summary": "Healthz",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/otp/request": {
+      "post": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Request Otp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP requested"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/otp/verify": {
+      "post": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Verify Otp",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Me",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user"
+          }
+        }
+      }
+    },
+    "/api/v1/wards": {
+      "get": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Wards",
+        "responses": {
+          "200": {
+            "description": "Ward list"
+          }
+        }
+      }
+    },
+    "/api/v1/agencies": {
+      "get": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Agencies",
+        "responses": {
+          "200": {
+            "description": "Agency list"
+          }
+        }
+      }
+    },
+    "/api/v1/config/public": {
+      "get": {
+        "tags": [
+          "identity and reference"
+        ],
+        "summary": "Public Config",
+        "responses": {
+          "200": {
+            "description": "Public configuration"
+          }
+        }
+      }
+    },
+    "/api/v1/dev/advance-time": {
+      "post": {
+        "tags": [
+          "default"
+        ],
+        "summary": "Advance Time",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "days"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clock advanced"
+          }
+        }
+      }
+    },
+    "/api/v1/dev/reset-seed": {
+      "post": {
+        "tags": [
+          "default"
+        ],
+        "summary": "Reset Seed",
+        "responses": {
+          "200": {
+            "description": "Seed restored"
+          }
+        }
+      }
+    },
+    "/api/v1/organisations/ping": {
+      "get": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Organisations Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/project_registry/ping": {
+      "get": {
+        "tags": [
+          "project_registry"
+        ],
+        "summary": "Project Registry Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/schedule_milestones/ping": {
+      "get": {
+        "tags": [
+          "schedule_milestones"
+        ],
+        "summary": "Schedule Milestones Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/audit/ping": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Audit Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/admin_config/ping": {
+      "get": {
+        "tags": [
+          "admin_config"
+        ],
+        "summary": "Admin Config Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/imports/ping": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Imports Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/geo_spatial/ping": {
+      "get": {
+        "tags": [
+          "geo_spatial"
+        ],
+        "summary": "Geo Spatial Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/permits/ping": {
+      "get": {
+        "tags": [
+          "permits"
+        ],
+        "summary": "Permits Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/conflict_engine/ping": {
+      "get": {
+        "tags": [
+          "conflict_engine"
+        ],
+        "summary": "Conflict Engine Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/evidence/ping": {
+      "get": {
+        "tags": [
+          "evidence"
+        ],
+        "summary": "Evidence Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/citizen_feedback/ping": {
+      "get": {
+        "tags": [
+          "citizen_feedback"
+        ],
+        "summary": "Citizen Feedback Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/ping": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Notifications Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/ping": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "summary": "Reporting Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    },
+    "/api/v1/public_api/ping": {
+      "get": {
+        "tags": [
+          "public_api"
+        ],
+        "summary": "Public Api Ping",
+        "responses": {
+          "200": {
+            "description": "Scaffold module status"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "LoginBody": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "PhoneBody": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string"
+          }
+        }
+      },
+      "OtpBody": {
+        "type": "object",
+        "required": [
+          "phone",
+          "otp"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string"
+          },
+          "otp": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
