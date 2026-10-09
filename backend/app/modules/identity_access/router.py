@@ -47,16 +47,6 @@ def verify_otp(body: OtpBody, db=Depends(get_db)):
 @router.get("/auth/me")
 def me(user=Depends(get_current_user)): return user
 
-@router.get("/wards")
-def wards(db=Depends(get_db)):
-    rows = db.execute(text("select id,tenant_id,zone_id,name,ST_AsGeoJSON(boundary)::json as boundary from ward order by name")).mappings().all()
-    return [{**dict(r),"id":str(r["id"]),"tenant_id":str(r["tenant_id"]),"zone_id":str(r["zone_id"]) if r["zone_id"] else None} for r in rows]
-
-@router.get("/agencies")
-def agencies(db=Depends(get_db)):
-    rows = db.execute(text("select id,tenant_id,name,type,short_code from agency order by name")).mappings().all()
-    return [{**dict(r),"id":str(r["id"]),"tenant_id":str(r["tenant_id"])} for r in rows]
-
 @router.get("/config/public")
 def public_config(db=Depends(get_db)):
     row = db.execute(text("select reason_codes from city_config order by tenant_id limit 1")).scalar()
