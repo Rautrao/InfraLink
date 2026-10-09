@@ -222,7 +222,7 @@ def works_geojson(bbox: str | None = None, ward_id: UUID | None = None, road: st
     clauses, params = _filters(user, bbox, ward_id, road, category, agency_id, status, delayed, q)
     condition = " and ".join(clauses) or "true"
     rows = db.execute(text(f"""
-        select w.id,w.ref_no,w.title,w.status,w.category,w.planned_start,w.current_target_end,w.last_update_at,w.geometry,
+        select w.id,w.ref_no,w.title,w.status,w.category,w.planned_start,w.current_target_end,w.last_update_at,w.road_name,wd.name as ward_name,w.geometry,
                ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geometry,0.00002))::json as simplified,
                a.name as agency_name,coalesce(cc.overdue_days,7) as overdue_days,
                (w.current_target_end < :today and w.status::text not in ('completed','restoration_verified','closed')) as delayed
@@ -232,7 +232,7 @@ def works_geojson(bbox: str | None = None, ward_id: UUID | None = None, road: st
     features = []
     for r in rows:
         delayed_flag = bool(r["delayed"])
-        features.append({"type":"Feature","id":str(r["id"]),"geometry":r["simplified"],"properties":{"id":str(r["id"]),"ref_no":r["ref_no"],"title":r["title"],"status":r["status"],"delayed":delayed_flag,"category":r["category"],"agency":r["agency_name"],"last_update_at":r["last_update_at"]}})
+        features.append({"type":"Feature","id":str(r["id"]),"geometry":r["simplified"],"properties":{"id":str(r["id"]),"ref_no":r["ref_no"],"title":r["title"],"status":r["status"],"delayed":delayed_flag,"category":r["category"],"agency":r["agency_name"],"road_name":r["road_name"],"ward_name":r["ward_name"],"last_update_at":r["last_update_at"]}})
     return {"type":"FeatureCollection","features":features}
 
 @router.get("/works/{work_id}")
@@ -326,7 +326,7 @@ def add_update(work_id: UUID, body: UpdateCreate, db=Depends(get_db), user=Depen
         raise HTTPException(422,"Reducing completion requires an explanation")
     db.execute(text("insert into work_update(tenant_id,work_id,text,pct_complete,by_user,at,is_public) values(cast(:tenant as uuid),cast(:id as uuid),:text,:pct,cast(:actor as uuid),:at,true)"),{"tenant":str(row["tenant_id"]),"id":str(work_id),"text":body.text,"pct":body.pct_complete,"actor":str(user["id"]),"at":clock.now()})
     db.execute(text("update work set last_update_at=:at,updated_at=:at,pct_complete=coalesce(:pct,pct_complete) where id=cast(:id as uuid)"),{"at":clock.now(),"pct":body.pct_complete,"id":str(work_id)})
-    emit(db,"WorkUpdated.v1",{"tenant_id":str(row["tenant_id"]),"work_id":str(work_id),"actor_id":str(user["id"]),"occurred_at":clock.now().isoformat(),"changed_fields":["last_update_at","pct_complete"] if body.pct_complete is not None else ["last_update_at"]})
+    emit(db,"WorkUpdated.v1",{"tenant_id":str(row["tenant_id"]),"work_id":str(work_id),"actor_id":str(user["id"]),"occurred_at":clock.now().isoformat(),"changed_fields":["last_update_at","pct_complete"] if body.pct_complete is not None else ["last_update_at"],"pct_delta":abs(body.pct_complete-row["pct_complete"]) if body.pct_complete is not None else 0})
     write_audit(db,user,"progress_update","work",work_id,after={"text":body.text,"pct_complete":body.pct_complete,"explanation":body.explanation})
     db.commit()
     return {"status":"ok","last_update_at":clock.now(),"pct_complete":body.pct_complete if body.pct_complete is not None else row["pct_complete"]}
