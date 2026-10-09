@@ -33,11 +33,16 @@ def dispatch_events():
         try: dispatch_batch(session)
         except Exception: session.rollback()
 
+def scan_overdue_updates():
+    from app.core.jobs import check_overdue_updates
+    check_overdue_updates()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     apply_schema()
     if not scheduler.running:
         scheduler.add_job(dispatch_events,"interval",seconds=2,id="outbox",replace_existing=True)
+        scheduler.add_job(scan_overdue_updates,"interval",minutes=5,id="overdue_updates",replace_existing=True)
         scheduler.start()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     yield
