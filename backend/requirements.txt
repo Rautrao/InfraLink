@@ -8,8 +8,4 @@ bcrypt==4.3.0
 APScheduler==3.11.0
 pytest==8.3.5
 httpx==0.28.1
-<<<<<<< HEAD
 python-multipart==0.0.20
-=======
-python-multipart
->>>>>>> 1ab7a17797d359c78ff97db305d08fb2e11602d4
