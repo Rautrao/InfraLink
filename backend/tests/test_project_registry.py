@@ -40,6 +40,10 @@ def test_create_read_geojson_and_update_work(client):
 def test_works_write_requires_staff_and_status_machine(client):
     response = create_work(client, "invalid-token")
     assert response.status_code == 401
+    public_with_stale_token = client.get("/api/v1/works", headers={"Authorization": "Bearer invalid-token"})
+    assert public_with_stale_token.status_code == 200
+    public_geo_with_stale_token = client.get("/api/v1/works/geojson", headers={"Authorization": "Bearer invalid-token"})
+    assert public_geo_with_stale_token.status_code == 200
     token = login(client, "je.ward1@demo.city")
     roads_id=next(a["id"] for a in client.get("/api/v1/agencies").json() if a["short_code"]=="ROADS")
     invalid=client.post("/api/v1/works",headers={"Authorization":f"Bearer {token}"},json={"title":"Invalid point geometry","category":"water_pipeline","agency_id":roads_id,"geometry":{"type":"Point","coordinates":[73.82,18.51]},"planned_start":"2026-11-01","original_target_end":"2026-11-20"})

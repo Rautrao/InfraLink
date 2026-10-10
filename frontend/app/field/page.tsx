@@ -82,6 +82,7 @@ export default function FieldPage() {
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
   const [loadingWorks, setLoadingWorks] = useState<boolean>(true);
   const [isUsingCache, setIsUsingCache] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Sync state
   const [queue, setQueue] = useState<SyncQueueItem[]>([]);
@@ -167,6 +168,7 @@ export default function FieldPage() {
   // 3. Load Works (Online API -> fallback to IndexedDB)
   const loadWorks = useCallback(async () => {
     setLoadingWorks(true);
+    setLoadError(null);
     if (effectiveOnline) {
       try {
         // Try fetching assigned works from API
@@ -190,7 +192,7 @@ export default function FieldPage() {
         setWorks(cached);
         setIsUsingCache(true);
         if (cached.length === 0) {
-          toast('No cached works found in offline storage.');
+          setLoadError('Could not load works and no offline cache is available.');
         }
       } finally {
         setLoadingWorks(false);
@@ -203,6 +205,7 @@ export default function FieldPage() {
         setIsUsingCache(true);
       } catch (err) {
         console.error('Failed to read from IndexedDB:', err);
+        setLoadError('Could not read saved works from this device.');
       } finally {
         setLoadingWorks(false);
       }
@@ -1290,7 +1293,7 @@ export default function FieldPage() {
               </div>
             ) : filteredWorks.length === 0 ? (
               <Card className="text-center py-8">
-                <EmptyState
+                {loadError ? <div role="alert" className="space-y-3"><p>{loadError}</p><Button tone="secondary" onClick={() => void loadWorks()}>Retry</Button></div> : <EmptyState
                   title="No assigned works found"
                   detail={
                     searchQuery
@@ -1304,7 +1307,7 @@ export default function FieldPage() {
                       </Button>
                     ) : undefined
                   }
-                />
+                />}
               </Card>
             ) : (
               <div className="space-y-2.5">

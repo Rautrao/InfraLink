@@ -308,7 +308,6 @@ def change_status(work_id: UUID, body: StatusChange, db=Depends(get_db), user=De
     if to_status=="paused" and (not body.reason_code or not body.explanation): raise HTTPException(422,"Pausing requires reason_code and explanation")
     if to_status=="completed" and row["pct_complete"] != 100: raise HTTPException(409,"Work can be completed only at 100 percent")
     if to_status=="restoration_verified":
-        # TODO(Aayushya): replace this scaffold stub with evidence.has_restoration_evidence(work_id).
         from app.modules.evidence.service import has_restoration_evidence
         if not has_restoration_evidence(work_id,db): raise HTTPException(409,"Restoration evidence is required")
     db.execute(text("update work set status=cast(:status as work_status),updated_at=:at, restoration_verified_at=case when :status='restoration_verified' then :at else restoration_verified_at end where id=cast(:id as uuid)"),{"status":to_status,"at":clock.now(),"id":str(work_id)})

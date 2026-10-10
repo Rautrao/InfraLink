@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, Textarea, Card, toast, Tabs, Badge, StatusChip, Timeline, Modal, LastUpdated } from '@/components/ui';
+import { Button, Input, Select, Textarea, Card, toast, Tabs, Badge, StatusChip, Timeline, Modal, LastUpdated, ErrorState, EmptyState, Skeleton } from '@/components/ui';
 
 export default function WorkDetail({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -15,11 +15,12 @@ export default function WorkDetail({ params }: { params: { id: string } }) {
 
   const [updateForm, setUpdateForm] = useState({ text: '', pct_complete: 0, is_public: true });
 
-  const { data: work, refetch } = useQuery({ queryKey: ['work', params.id], queryFn: () => api<any>(`/works/${params.id}`) });
-  const { data: history } = useQuery({ queryKey: ['work-history', params.id], queryFn: () => api<any[]>(`/works/${params.id}/history`) });
+  const { data: work, isLoading, error, refetch } = useQuery({ queryKey: ['work', params.id], queryFn: () => api<any>(`/works/${params.id}`) });
+  const { data: history, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useQuery({ queryKey: ['work-history', params.id], queryFn: () => api<any>(`/works/${params.id}/history`) });
   const { data: config } = useQuery({ queryKey: ['config-public'], queryFn: () => api<any>('/config/public') });
 
-  if (!work) return <div className="p-12 text-center text-gray-500">Loading work details...</div>;
+  if (isLoading) return <div className="space-y-3"><Skeleton className="skeleton-card"/><Skeleton className="skeleton-card"/></div>;
+  if (error || !work) return <ErrorState onRetry={() => void refetch()} />;
 
   const validTransitions: Record<string, string[]> = {
     planned: ['permitted', 'paused'],
@@ -253,12 +254,12 @@ export default function WorkDetail({ params }: { params: { id: string } }) {
       {activeTab === 'history' && (
         <Card className="p-6">
           <h2 className="text-lg font-bold mb-6">Full Timeline</h2>
-          {history ? <Timeline items={history.map((h: any) => ({
+          {historyLoading ? <Skeleton className="skeleton-card"/> : historyError ? <ErrorState onRetry={() => void refetchHistory()} /> : history?.items?.length ? <Timeline items={history.items.map((h: any) => ({
             title: h.type,
             detail: h.description,
             date: h.at,
             by: h.by_user_name
-          }))} /> : <div className="text-gray-500">Loading history...</div>}
+          }))} /> : <EmptyState title="No history yet" />}
         </Card>
       )}
 
