@@ -37,6 +37,25 @@ def test_create_read_geojson_and_update_work(client):
     timeline = client.get(f"/api/v1/works/{work['id']}/history")
     assert timeline.status_code == 200 and any(event["kind"] == "update" for event in timeline.json()["items"])
 
+def test_resident_reads_only_public_work_and_sees_public_contact_fields(client):
+    staff_token = login(client, "je.ward1@demo.city")
+    created = create_work(client, staff_token, "Resident visibility test")
+    work = created.json()
+    resident = "9000000001"
+    assert client.post("/api/v1/auth/otp/request", json={"phone": resident}).status_code == 200
+    resident_token = client.post("/api/v1/auth/otp/verify", json={"phone": resident, "otp": "123456"}).json()["access_token"]
+    resident_headers = {"Authorization": f"Bearer {resident_token}"}
+
+    public_detail = client.get(f"/api/v1/works/{work['id']}", headers=resident_headers)
+    assert public_detail.status_code == 200
+    assert public_detail.json()["contact"]["phone_masked"] != "+919876540123"
+
+    hidden = client.patch(f"/api/v1/works/{work['id']}", headers={"Authorization": f"Bearer {staff_token}"}, json={"is_public": False})
+    assert hidden.status_code == 200
+    assert client.get(f"/api/v1/works/{work['id']}", headers=resident_headers).status_code == 404
+    visible = client.get("/api/v1/works", headers=resident_headers).json()
+    assert work["id"] not in {item["id"] for item in visible["items"]}
+
 def test_works_write_requires_staff_and_status_machine(client):
     response = create_work(client, "invalid-token")
     assert response.status_code == 401

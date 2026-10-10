@@ -143,6 +143,11 @@ export default function FieldPage() {
       // Check auth token
       const token = localStorage.getItem('access_token');
       setHasToken(Boolean(token));
+      if ('serviceWorker' in navigator) {
+        void navigator.serviceWorker.register('/field-sw.js', { scope: '/field' }).catch((error) => {
+          console.warn('Field offline shell could not be installed:', error);
+        });
+      }
 
       return () => {
         window.removeEventListener('online', handleOnline);

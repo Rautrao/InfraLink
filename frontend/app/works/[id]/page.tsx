@@ -15,8 +15,8 @@ const statusNames:Record<string,'planned'|'permitted'|'ongoing'|'paused'|'comple
 export default function WorkDetail(){
   const params=useParams<{id:string}>();const id=decodeURIComponent(params.id);const router=useRouter();const {t,language,formatDate}=useT();const {lowBandwidth}=usePreferences();const [photo,setPhoto]=useState<Evidence|null>(null);const [feedbackOpen,setFeedbackOpen]=useState(false);const [feedbackText,setFeedbackText]=useState('');const [feedbackKind,setFeedbackKind]=useState('observation');const [sending,setSending]=useState(false);
   const query=useQuery({queryKey:['work',id],queryFn:()=>api<Work>(`/works/${encodeURIComponent(id)}`)});const work=query.data;
-  const publicFeedbackQuery = useQuery({ queryKey: ['work-feedback-public', id], queryFn: () => api<any[]>(`/works/${encodeURIComponent(id)}/feedback/public`).catch(() => []) });
-  const publicFeedback = publicFeedbackQuery.data || [];
+  const publicFeedbackQuery = useQuery({ queryKey: ['work-feedback-public', id], queryFn: () => api<{items?:any[]}>(`/works/${encodeURIComponent(id)}/feedback/public`) });
+  const publicFeedback = publicFeedbackQuery.data?.items || [];
   const statusLabel=work?.delayed?t('delayed'):t((statusNames[work?.status??'planned']??'planned') as any);
   const timeline=useMemo(()=>{
     if(!work)return[];const rows:any[]=[];
@@ -27,7 +27,7 @@ export default function WorkDetail(){
     return rows.sort((a,b)=>new Date(b.date??0).getTime()-new Date(a.date??0).getTime());
   },[work,t,formatDate]);
   async function authenticatedAction(action:()=>Promise<any>,success:string){if(!localStorage.getItem('access_token')){router.push(`/login?next=${encodeURIComponent(`/works/${id}`)}`);return;}try{await action();toast(success);}catch(error){if(error instanceof ApiError&&(error.status===401||error.status===403)){router.push(`/login?next=${encodeURIComponent(`/works/${id}`)}`);return;}toast(error instanceof Error?error.message:t('error'));}}
-  async function submitFeedback(event:React.FormEvent){event.preventDefault();if(!feedbackText.trim())return;setSending(true);await authenticatedAction(()=>api(`/works/${encodeURIComponent(id)}/feedback`,{method:'POST',body:JSON.stringify({kind:feedbackKind,text:feedbackText.trim()})}),t('feedbackSent'));setSending(false);setFeedbackText('');setFeedbackOpen(false);}
+  async function submitFeedback(event:React.FormEvent<HTMLFormElement>){event.preventDefault();if(!feedbackText.trim())return;const form=new FormData();form.set('kind',feedbackKind);form.set('text',feedbackText.trim());const photoFile=(event.currentTarget.elements.namedItem('photo') as HTMLInputElement|null)?.files?.[0];if(photoFile)form.set('photo',photoFile);setSending(true);try{await authenticatedAction(()=>api(`/works/${encodeURIComponent(id)}/feedback`,{method:'POST',body:form}),t('feedbackSent'));setFeedbackText('');setFeedbackOpen(false);}finally{setSending(false);}}
   if(query.isLoading)return <main className="page-wrap"><Skeleton className="skeleton-card"/></main>;
   if(query.isError||!work)return <main className="page-wrap"><ErrorState onRetry={()=>query.refetch()}/></main>;
   const geo={type:'FeatureCollection',features:work.geometry?[{type:'Feature',id:work.id,geometry:work.geometry,properties:{id:work.id,title:work.title,status:work.status,delayed:work.delayed,agency:work.agency?.name}}]:[]} as any;
@@ -49,8 +49,8 @@ export default function WorkDetail(){
       <Card className="detail-card"><h2>{t('stillOngoing')}</h2><p>{t('stillYes')}: <strong>{work.still_ongoing?.yes??0}</strong> · {t('stillNo')}: <strong>{work.still_ongoing?.no??0}</strong></p><div className="contact-actions"><Button tone="secondary" onClick={()=>authenticatedAction(()=>api(`/works/${encodeURIComponent(id)}/still-ongoing`,{method:'POST',body:JSON.stringify({value:true})}),t('thanks'))}>✓ {t('yes')}</Button><Button tone="secondary" onClick={()=>authenticatedAction(()=>api(`/works/${encodeURIComponent(id)}/still-ongoing`,{method:'POST',body:JSON.stringify({value:false})}),t('thanks'))}>× {t('no')}</Button></div></Card>
       <Card className="detail-card"><h2>{t('timeline')}</h2>{timeline.length?<Timeline items={timeline}/>:<p>{t('noUpdates')}</p>}</Card>
       <Card className="detail-card">
-        <h2>Public Feedback & Responses</h2>
-        {publicFeedback.length ? <div className="flex flex-col gap-4 mt-4">
+        <h2>{t('publicFeedback')}</h2>
+        {publicFeedbackQuery.isLoading ? <Skeleton className="skeleton-card"/> : publicFeedbackQuery.isError ? <ErrorState onRetry={()=>publicFeedbackQuery.refetch()}/> : publicFeedback.length ? <div className="flex flex-col gap-4 mt-4">
           {publicFeedback.map((fb: any, index: number) => (
             <div key={index} className="p-3 bg-gray-50 border rounded text-sm">
               <div className="flex justify-between text-gray-500 mb-1">
@@ -58,56 +58,56 @@ export default function WorkDetail(){
                 <span>{formatDate(fb.created_at)}</span>
               </div>
               <p className="text-gray-800">{fb.text}</p>
-              {fb.events?.filter((e: any) => e.is_public && e.message).map((e: any, i: number) => (
+              {fb.responses?.map((e: any, i: number) => (
                 <div key={i} className="mt-2 p-2 bg-blue-50 border-l-2 border-blue-400 text-blue-900">
-                  <span className="font-bold mr-2">{e.responder_dept || 'Official Response'}:</span>
+                <span className="font-bold mr-2">{t('officialResponse')}:</span>
                   {e.message}
                 </div>
               ))}
             </div>
           ))}
-        </div> : <p>No public feedback for this work yet.</p>}
+        </div> : <p>{t('noPublicFeedback')}</p>}
       </Card>
     </div><aside className="detail-column"><Card className="detail-card"><div className="section-head" style={{marginTop:0}}><h2>{t('feedbackTitle')}</h2></div><Button onClick={()=>setFeedbackOpen(true)}>✎ {t('feedback')}</Button><p>{t('signInToFollow')}</p></Card><LastUpdated value={work.last_update_at}/></aside></div>
     <Modal open={!!photo} title={work.title} onClose={()=>setPhoto(null)}>{photo&&<figure><img src={urls(photo)} alt={`${work.title} · ${photo.kind??t('photos')}`} style={{width:'100%',maxHeight:'70vh',objectFit:'contain'}}/><figcaption>{t('photos')} · {formatDate(photo.taken_at)}</figcaption></figure>}</Modal>
-    <Modal open={feedbackOpen} title="Ask / Report" onClose={() => setFeedbackOpen(false)}>
+    <Modal open={feedbackOpen} title={t('askReport')} onClose={() => setFeedbackOpen(false)}>
       <form className="feedback-form flex flex-col gap-4 p-4" onSubmit={submitFeedback}>
         <div>
-          <label className="block text-sm font-medium mb-1">Type of Feedback</label>
+          <label className="block text-sm font-medium mb-1">{t('feedbackType')}</label>
           <select className="ui-input w-full" value={feedbackKind} onChange={e => setFeedbackKind(e.target.value)}>
-            <option value="observation">Observation</option>
-            <option value="question">Question</option>
-            <option value="complaint">Complaint</option>
+            <option value="observation">{t('observation')}</option>
+            <option value="question">{t('question')}</option>
+            <option value="complaint">{t('complaint')}</option>
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
+          <label className="block text-sm font-medium mb-1">{t('description')}</label>
           <textarea 
             className="ui-input ui-textarea w-full" 
             value={feedbackText} 
             onChange={e => setFeedbackText(e.target.value.substring(0, 500))} 
             rows={4}
             required
-            placeholder="What would you like to report?"
+            placeholder={t('feedbackPlaceholder')}
           />
           <div className="text-xs text-gray-500 text-right mt-1">{feedbackText.length}/500 chars</div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Optional Photo (<small>1MB max</small>)</label>
-          <input type="file" accept="image/*" className="ui-input w-full text-sm" />
+          <label className="block text-sm font-medium mb-1">{t('optionalPhoto')} (<small>1MB max</small>)</label>
+          <input name="photo" type="file" accept="image/*" className="ui-input w-full text-sm" />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Optional Location</label>
-          <select className="ui-input w-full">
-            <option value="none">Don't include location</option>
-            <option value="project">Use project location</option>
-            <option value="my">Use my current GPS location</option>
+          <label className="block text-sm font-medium mb-1">{t('optionalLocation')}</label>
+          <select className="ui-input w-full" defaultValue="none">
+            <option value="none">{t('noLocation')}</option>
+            <option value="project">{t('projectLocation')}</option>
+            <option value="my">{t('currentLocation')}</option>
           </select>
         </div>
         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-          <strong>Note:</strong> Private contact details are never published. The department will review this.
+          <strong>{t('note')}:</strong> {t('feedbackPrivacyNote')}
         </div>
-        <Button type="submit" disabled={sending}>{sending ? 'Submitting...' : 'Submit Feedback'}</Button>
+        <Button type="submit" disabled={sending}>{sending ? t('submitting') : t('submitFeedback')}</Button>
       </form>
     </Modal>
   </main>;
