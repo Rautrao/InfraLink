@@ -34,7 +34,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
 def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db=Depends(get_db)):
     if not credentials:
         return None
-    claims = decode_token(credentials.credentials)
+    try:
+        claims = decode_token(credentials.credentials)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            return None
+        raise
     user = db.execute(text("select id, tenant_id, agency_id, name, email, phone, role, ward_id, zone_id, active from app_user where id=:id and active"), {"id": claims["sub"]}).mappings().first()
     if not user: raise HTTPException(401, "User not found or inactive")
     return dict(user)

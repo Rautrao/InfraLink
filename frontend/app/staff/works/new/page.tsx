@@ -1,9 +1,9 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Select, Textarea, Card, toast } from '@/components/ui';
+import { Button, Input, Select, Textarea, Card, toast, ErrorState, Skeleton } from '@/components/ui';
 import maplibregl from 'maplibre-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
@@ -27,9 +27,10 @@ export default function NewWork() {
   const [showConflicts, setShowConflicts] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: user } = useQuery({ queryKey: ['auth-me'], queryFn: () => api<any>('/auth/me') });
-  const { data: agencies } = useQuery({ queryKey: ['agencies'], queryFn: () => api<any[]>('/agencies') });
-  const { data: config } = useQuery({ queryKey: ['config-public'], queryFn: () => api<any>('/config/public') });
+  const { data: user, isLoading: userLoading, error: userError, refetch: refetchUser } = useQuery({ queryKey: ['auth-me'], queryFn: () => api<any>('/auth/me'), retry: false });
+  const { data: agencies, isLoading: agenciesLoading, error: agenciesError, refetch: refetchAgencies } = useQuery({ queryKey: ['agencies'], queryFn: () => api<any[]>('/agencies') });
+  const { data: config, isLoading: configLoading, error: configError, refetch: refetchConfig } = useQuery({ queryKey: ['config-public'], queryFn: () => api<any>('/config/public') });
+  const referenceError = userError || agenciesError || configError;
 
   // Auto-fill agency if utility_editor
   useEffect(() => {
@@ -134,6 +135,9 @@ export default function NewWork() {
     <div className="max-w-5xl mx-auto flex flex-col gap-6 pb-20">
       <h1 className="text-2xl font-bold">Submit New Work</h1>
 
+      {(userLoading || agenciesLoading || configLoading) && <Skeleton className="skeleton-card"/>}
+      {referenceError && <ErrorState onRetry={() => { void refetchUser(); void refetchAgencies(); void refetchConfig(); }} />}
+
       {showConflicts && (
         <Card className="p-6 border-orange-300 bg-orange-50 flex flex-col gap-4 shadow-sm">
           <h2 className="text-xl font-bold text-orange-800">⚠️ Possible Conflicts Detected</h2>
@@ -164,7 +168,7 @@ export default function NewWork() {
         </Card>
       )}
 
-      <form onSubmit={handleInitialSubmit} className="flex flex-col gap-6">
+      {!referenceError && !userLoading && !agenciesLoading && !configLoading && <form onSubmit={handleInitialSubmit} className="flex flex-col gap-6">
         <Card className="p-6 flex flex-col gap-4">
           <h2 className="text-lg font-semibold border-b pb-2">Basics</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -267,7 +271,7 @@ export default function NewWork() {
             {isSubmitting ? 'Checking...' : 'Submit Work'}
           </Button>
         </div>
-      </form>
+      </form>}
     </div>
   );
 }

@@ -1,13 +1,14 @@
 'use client';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Button, Card, toast, Badge } from '@/components/ui';
+import { Button, Card, toast, ErrorState } from '@/components/ui';
 
 export default function ImportWorks() {
   const [file, setFile] = useState<File | null>(null);
   const [dryRunResult, setDryRunResult] = useState<{ valid: any[], invalid: any[] } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [templateLoading, setTemplateLoading] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -18,6 +19,7 @@ export default function ImportWorks() {
 
   const uploadFile = async (dryRun: boolean) => {
     if (!file) return toast('Please select a file first.');
+    setError('');
     setIsProcessing(true);
     const formData = new FormData();
     const fieldName = file.name.endsWith('.csv') ? 'csv_file' : 'geojson_file';
@@ -43,6 +45,7 @@ export default function ImportWorks() {
         setDryRunResult(null);
       }
     } catch (err: any) {
+      setError(err.message || 'Import error');
       toast(err.message || 'Import error');
     } finally {
       setIsProcessing(false);
@@ -50,10 +53,14 @@ export default function ImportWorks() {
   };
 
   const downloadTemplate = async () => {
+    setError('');
+    setTemplateLoading(true);
+    try {
     const token = localStorage.getItem('access_token');
     const res = await fetch('/api/v1/works/import/template', {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });
+    if (!res.ok) throw new Error('Could not download the import template.');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -62,11 +69,18 @@ export default function ImportWorks() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.message || 'Template download failed');
+    } finally {
+      setTemplateLoading(false);
+    }
   };
 
   return (
     <div className="max-w-4xl mx-auto flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Bulk Import Works</h1>
+      {error && <ErrorState onRetry={() => setError('')} />}
       
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-4">Upload Data</h2>
@@ -79,7 +93,7 @@ export default function ImportWorks() {
               onChange={handleFileChange} 
               className="border p-2 rounded w-full max-w-md"
             />
-            <Button tone="secondary" onClick={downloadTemplate}>Download Template</Button>
+            <Button tone="secondary" onClick={downloadTemplate} disabled={templateLoading}>{templateLoading ? 'Downloading...' : 'Download Template'}</Button>
           </div>
           <div className="flex gap-4 mt-2">
             <Button onClick={() => uploadFile(true)} disabled={!file || isProcessing} tone="secondary">
@@ -94,6 +108,7 @@ export default function ImportWorks() {
 
       {dryRunResult && (
         <div className="flex flex-col gap-6">
+          {!dryRunResult.valid?.length && !dryRunResult.invalid?.length && <Card><p className="p-4 text-gray-600">No rows were found in this file.</p></Card>}
           <Card className="p-6 border-green-200">
             <h3 className="font-bold text-green-800 mb-2">Valid Rows ({dryRunResult.valid?.length || 0})</h3>
             <div className="max-h-64 overflow-y-auto">

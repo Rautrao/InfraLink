@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { Button, Input, Select, Badge, StatusChip, Card, Pagination, EmptyState, ErrorState, LastUpdated } from '@/components/ui';
+import { Button, Input, Select, Badge, StatusChip, Card, Pagination, EmptyState, ErrorState, LastUpdated, Skeleton } from '@/components/ui';
 
 export default function WorksList() {
   const [page, setPage] = useState(1);
@@ -14,7 +14,7 @@ export default function WorksList() {
   const { data: agencies } = useQuery({ queryKey: ['agencies'], queryFn: () => api<any[]>('/agencies') });
   
   // Also get the current user so we can default to "My works" if applicable
-  const { data: user } = useQuery({ queryKey: ['auth-me'], queryFn: () => api<any>('/auth/me') });
+  const { data: user, isLoading: userLoading, error: userError, refetch: refetchUser } = useQuery({ queryKey: ['auth-me'], queryFn: () => api<any>('/auth/me'), retry: false });
 
   // Build query string
   const queryObj = { ...filters, page: page.toString() };
@@ -72,8 +72,10 @@ export default function WorksList() {
         </div>
       </Card>
 
-      {isLoading ? (
-        <div className="p-12 text-center text-gray-500">Loading works...</div>
+      {userLoading || isLoading ? (
+        <div className="space-y-3"><Skeleton className="skeleton-card"/><Skeleton className="skeleton-card"/></div>
+      ) : userError ? (
+        <ErrorState onRetry={() => void refetchUser()} />
       ) : error ? (
         <ErrorState onRetry={() => refetch()} />
       ) : !data?.items?.length ? (

@@ -2,27 +2,34 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Button, Input, Card, toast, Pagination, Badge } from '@/components/ui';
+import { Button, Input, Card, toast, Pagination, Badge, ErrorState, Skeleton, EmptyState } from '@/components/ui';
 
 export default function AuditLog() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ entity: '', entity_id: '' });
   const [verifyResult, setVerifyResult] = useState<{ valid: boolean, broken_at: string | null } | null>(null);
+  const [verifyError, setVerifyError] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const qs = new URLSearchParams({ page: page.toString(), ...filters }).toString();
-  const { data, isLoading, refetch } = useQuery({ 
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['audit', qs], 
     queryFn: () => api<any>(`/audit?${qs}`) 
   });
 
   const verifyIntegrity = async () => {
+    setVerifying(true);
+    setVerifyError(false);
     try {
       const res = await api<any>('/audit/verify');
       setVerifyResult(res);
       if (res.valid) toast('Audit chain intact! ?o+');
       else toast('Tampering detected!');
     } catch (err: any) {
+      setVerifyError(true);
       toast(err.message || 'Verification failed');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -36,9 +43,10 @@ export default function AuditLog() {
               {verifyResult.valid ? '?o+ Chain Intact' : `! Tampered at #${verifyResult.broken_at}`}
             </Badge>
           )}
-          <Button onClick={verifyIntegrity} tone="secondary">Verify Integrity</Button>
+          <Button onClick={verifyIntegrity} tone="secondary" disabled={verifying}>{verifying ? 'Verifying...' : 'Verify Integrity'}</Button>
         </div>
       </div>
+      {verifyError && <ErrorState onRetry={() => void verifyIntegrity()} />}
 
       <Card className="p-4 bg-white shadow-sm border border-gray-200">
         <div className="flex gap-4">
@@ -56,6 +64,7 @@ export default function AuditLog() {
       </Card>
 
       <Card className="p-0 overflow-hidden">
+        {isLoading ? <div className="p-4 space-y-3"><Skeleton className="skeleton-card"/><Skeleton className="skeleton-card"/></div> : error ? <ErrorState onRetry={() => void refetch()} /> : !data?.items?.length ? <EmptyState title="No audit logs found" detail="Try changing the entity filters." /> :
         <table className="w-full text-left text-sm text-gray-700 font-mono">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -84,9 +93,9 @@ export default function AuditLog() {
                 </td>
               </tr>
             ))}
-            {!data?.items?.length && <tr><td colSpan={5} className="p-4 text-center text-gray-500">No audit logs found.</td></tr>}
           </tbody>
         </table>
+        }
         {data && (
           <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
             <Pagination page={page} pageSize={data.page_size} total={data.total} onPage={setPage} />
