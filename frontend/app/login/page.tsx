@@ -48,6 +48,8 @@ function ResidentLoginForm() {
       });
       if (res?.access_token) {
         localStorage.setItem('access_token', res.access_token);
+        if (res.user) localStorage.setItem('resident_user', JSON.stringify(res.user));
+        window.dispatchEvent(new Event('resident-auth-changed'));
         toast('Logged in successfully!');
         router.push(returnTo);
       }
