@@ -16,9 +16,9 @@ function ResidentLoginForm() {
   
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || '/';
+  const returnTo = searchParams.get('returnTo') || searchParams.get('next') || '/';
   
-  const isDev = process.env.NEXT_PUBLIC_DEV === 'true' || true; // hackathon dev mode
+  const isDev = process.env.NEXT_PUBLIC_DEV === 'true';
 
   const requestOtp = async (e: React.FormEvent) => {
     e.preventDefault();

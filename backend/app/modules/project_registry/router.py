@@ -93,6 +93,8 @@ def _scope_sql(user):
         return ["wd.zone_id=cast(:scope_zone as uuid)"], {"scope_zone": str(user["zone_id"])}
     if role in ("admin", "commissioner", "chief_engineer", "utility_editor", "auditor"):
         return [], {}
+    if role == "resident":
+        return [], {}
     # The scaffold schema has no work assignment table yet; contractor scope
     # cannot safely be inferred, so contractor data is not expanded here.
     return ["false"], {}
@@ -111,10 +113,11 @@ def _work_row(db, work_id, user):
     params.update(scope_params)
     if user:
         if user["role"] not in ("admin", "commissioner", "chief_engineer", "auditor", "utility_editor"):
-            sql += " and " + " and ".join(scope)
+            if scope:
+                sql += " and " + " and ".join(scope)
         sql += " and w.tenant_id=cast(:tenant as uuid)"
         params["tenant"] = str(user["tenant_id"])
-    else:
+    if not user or user["role"] == "resident":
         sql += " and w.is_public"
     row = db.execute(text(sql), params).mappings().first()
     if not row:
@@ -143,12 +146,13 @@ def _detail(db, row, user):
     delayed, update_overdue = _derived(row)
     revisions = db.execute(text("select old_target,new_target,reason_code,explanation,at from work_date_revision where work_id=cast(:id as uuid) order by at"), {"id": wid}).mappings().all()
     milestones = db.execute(text("select id,name,planned_date,actual_date,pct,sort from work_milestone where work_id=cast(:id as uuid) order by sort,planned_date"), {"id": wid}).mappings().all()
-    updates = db.execute(text("select text,pct_complete,at,is_public from work_update where work_id=cast(:id as uuid) and (:staff or is_public) order by at desc"), {"id": wid, "staff": bool(user)}).mappings().all()
+    staff_view = bool(user and user["role"] != "resident")
+    updates = db.execute(text("select text,pct_complete,at,is_public from work_update where work_id=cast(:id as uuid) and (:staff or is_public) order by at desc"), {"id": wid, "staff": staff_view}).mappings().all()
     evidence = db.execute(text("select public_path,taken_at,kind from evidence where work_id=cast(:id as uuid) and public_path is not null order by taken_at desc"), {"id": wid}).mappings().all()
     permits = db.execute(text("select type,status,valid_from,valid_to from permit where work_id=cast(:id as uuid) order by applied_at desc"), {"id": wid}).mappings().all()
     votes = db.execute(text("select count(*) filter(where kind='still_ongoing_yes') as yes,count(*) filter(where kind='still_ongoing_no') as no,max(created_at) as last_confirmed_at from feedback_ticket where work_id=cast(:id as uuid) and kind in ('still_ongoing_yes','still_ongoing_no')"), {"id": wid}).mappings().first()
-    contact_phone = row["contact_phone"] if user or row["contact_channel"] == "official" else _mask_phone(row["contact_phone"])
-    contractor = row["contractor_name"] if user or row["contractor_public"] else None
+    contact_phone = row["contact_phone"] if staff_view or row["contact_channel"] == "official" else _mask_phone(row["contact_phone"])
+    contractor = row["contractor_name"] if staff_view or row["contractor_public"] else None
     return {
         "id": wid, "ref_no": row["ref_no"], "title": row["title"], "purpose": row["purpose"], "category": row["category"], "status": row["status"], "delayed": delayed, "update_overdue": update_overdue,
         "agency": {"id": str(row["agency_id"]), "name": row["agency_name"]}, "contractor_name": contractor,
@@ -165,13 +169,16 @@ def _detail(db, row, user):
 
 def _filters(user, bbox, ward_id, road, category, agency_id, status, delayed, q):
     clauses, params = [], {"today": clock.today(), "now": clock.now()}
-    if not user: clauses.append("w.is_public")
+    if not user:
+        clauses.append("w.is_public")
     else:
         clauses.append("w.tenant_id=cast(:tenant as uuid)")
         params["tenant"] = str(user["tenant_id"])
         scope, scope_params = _scope_sql(user)
         clauses.extend(scope)
         params.update(scope_params)
+        if user["role"] == "resident":
+            clauses.append("w.is_public")
     if ward_id:
         clauses.append("w.ward_id=cast(:ward_id as uuid)"); params["ward_id"] = ward_id
     if road:

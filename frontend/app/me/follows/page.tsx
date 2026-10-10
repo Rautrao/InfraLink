@@ -1,65 +1,72 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { Button, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { useT } from '@/lib/i18n';
+import { Button, Card, EmptyState, ErrorState, Skeleton } from '@/components/ui';
+
+type FollowItem = { id: string; work_id: string | null; ward_id: string | null; work_title?: string | null; ward_name?: string | null; channel: string };
+type Notification = { id: string; title: string; body: string; link?: string | null; created_at: string; read_at?: string | null; project_name?: string | null; affected_location?: { road_name?: string | null; ward?: string | null } };
 
 export default function MyFollows() {
-  const { data: follows, isLoading, isError, refetch } = useQuery({
-    queryKey: ['my-follows'],
-    queryFn: () => api<any[]>('/me/follows').catch(() => []) // Mocking empty if 404
+  const { t, formatDate } = useT();
+  const queryClient = useQueryClient();
+  const [ready, setReady] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setLoggedIn(Boolean(localStorage.getItem('access_token')));
+    setReady(true);
+  }, []);
+
+  const follows = useQuery({ queryKey: ['my-follows'], enabled: ready && loggedIn, queryFn: () => api<{ items: FollowItem[] }>('/follows') });
+  const notifications = useQuery({ queryKey: ['my-notifications'], enabled: ready && loggedIn, queryFn: () => api<{ items: Notification[] }>('/notifications/mine') });
+  const unfollow = useMutation({
+    mutationFn: (item: FollowItem) => {
+      const params = new URLSearchParams(item.work_id ? { work_id: item.work_id } : { ward_id: item.ward_id ?? '' });
+      return api(`/follows?${params}`, { method: 'DELETE' });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-follows'] }),
+  });
+  const markRead = useMutation({
+    mutationFn: (id: string) => api(`/notifications/${id}/read`, { method: 'PATCH' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-notifications'] }),
   });
 
-  const { data: notifications } = useQuery({
-    queryKey: ['my-notifications'],
-    queryFn: () => api<any[]>('/notifications/mine').catch(() => []) // Mocking empty if 404
-  });
+  if (!ready || (loggedIn && (follows.isLoading || notifications.isLoading))) {
+    return <main className="page-wrap page-narrow"><Skeleton className="skeleton-card"/><Skeleton className="skeleton-card"/></main>;
+  }
 
-  if (isLoading) return <div className="max-w-4xl mx-auto p-4"><Skeleton className="h-32 mb-4" /></div>;
-  if (isError) return <div className="max-w-4xl mx-auto p-4"><ErrorState onRetry={() => refetch()} /></div>;
-
-  return (
-    <div className="max-w-4xl mx-auto p-4 flex flex-col gap-6 pb-20">
-      <h1 className="text-2xl font-bold">My Follows & Alerts</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="flex flex-col gap-4">
-          <h2 className="text-xl font-bold border-b pb-2">Followed Items</h2>
-          {!follows || follows.length === 0 ? (
-            <EmptyState title="Not following anything" detail="Click the Follow button on any project or ward." />
-          ) : (
-            follows.map((follow: any) => (
-              <Card key={follow.id} className="p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-medium">{follow.work_id ? 'Project Follow' : 'Ward Follow'}</div>
-                  <Link href={follow.work_id ? `/works/${follow.work_id}` : `/wards/${follow.ward_id}`} className="text-sm text-blue-600 hover:underline">
-                    View Details
-                  </Link>
-                </div>
-                <div className="text-xs bg-gray-100 p-1 rounded">{follow.channel}</div>
-              </Card>
-            ))
+  return <main className="page-wrap page-narrow">
+    <h1 className="page-title">{t('myFollowsTitle')}</h1>
+    {!loggedIn ? <EmptyState title={t('login')} detail={t('signInToView')} action={<Link className="ui-button ui-button-primary" href="/login?returnTo=%2Fme%2Ffollows">{t('login')}</Link>}/>
+      : <div className="grid gap-6 md:grid-cols-2">
+        <section className="grid content-start gap-3" aria-labelledby="followed-items-heading">
+          <h2 id="followed-items-heading" className="text-xl font-bold">{t('followedItems')}</h2>
+          {follows.isError ? <ErrorState onRetry={() => void follows.refetch()}/> : !follows.data?.items.length ? <EmptyState title={t('noFollowedItems')} detail={t('followPromptAction')}/> : follows.data.items.map((item) => {
+            const href = item.work_id ? `/works/${item.work_id}` : `/wards/${item.ward_id}`;
+            return <Card key={item.id} className="grid gap-3">
+              <div><strong>{item.work_id ? item.work_title || t('projectFollow') : item.ward_name || t('wardFollow')}</strong><p className="text-sm text-slate-600">{item.channel}</p></div>
+              <div className="flex flex-wrap gap-2"><Link className="ui-button ui-button-secondary" href={href}>{t('openDetails')}</Link><Button tone="quiet" disabled={unfollow.isPending} onClick={() => unfollow.mutate(item)}>{t('removeFollow')}</Button></div>
+            </Card>;
+          })}
+          {unfollow.isError && <ErrorState onRetry={() => unfollow.reset()}/>}
+        </section>
+        <section className="grid content-start gap-3" aria-labelledby="notifications-heading">
+          <h2 id="notifications-heading" className="text-xl font-bold">{t('recentNotifications')}</h2>
+          {notifications.isError ? <ErrorState onRetry={() => void notifications.refetch()}/> : !notifications.data?.items.length ? <EmptyState title={t('noNotifications')}/> : notifications.data.items.map((item) =>
+            <Card key={item.id} className={`grid gap-2 ${item.read_at ? '' : 'border-l-4 border-l-teal-700'}`}>
+              <div className="flex items-start justify-between gap-2"><strong>{item.title}</strong>{!item.read_at && <span className="text-xs font-bold text-teal-800">●</span>}</div>
+              {item.project_name && <p className="text-sm font-semibold">{item.project_name}</p>}
+              <p className="text-sm text-slate-700">{item.body}</p>
+              {(item.affected_location?.road_name || item.affected_location?.ward) && <p className="text-sm text-slate-600">{[item.affected_location.road_name, item.affected_location.ward].filter(Boolean).join(' · ')}</p>}
+              <div className="flex items-center justify-between gap-2"><time className="text-xs text-slate-500">{formatDate(item.created_at, { hour: 'numeric', minute: '2-digit' })}</time><div className="flex gap-2">{item.link && <Link className="ui-button ui-button-secondary" href={item.link}>{t('open')}</Link>}{!item.read_at && <Button tone="quiet" disabled={markRead.isPending} onClick={() => markRead.mutate(item.id)}>{t('markRead')}</Button>}</div></div>
+            </Card>
           )}
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <h2 className="text-xl font-bold border-b pb-2">Recent Notifications</h2>
-          {!notifications || notifications.length === 0 ? (
-            <EmptyState title="No recent notifications" />
-          ) : (
-            notifications.map((n: any) => (
-              <Card key={n.id} className="p-4 border-l-4 border-blue-500">
-                <div className="font-bold text-sm text-blue-800">{n.title}</div>
-                <div className="text-sm text-gray-700 mt-1">{n.body}</div>
-                <div className="text-xs text-gray-500 mt-2 flex justify-between">
-                  <span>{new Date(n.created_at).toLocaleString()}</span>
-                  {n.link && <Link href={n.link} className="text-blue-600 hover:underline">Open</Link>}
-                </div>
-              </Card>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
+          {markRead.isError && <ErrorState onRetry={() => markRead.reset()}/>}
+        </section>
+      </div>}
+  </main>;
 }

@@ -1,91 +1,72 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Badge, Card, ErrorState, StatusChip, Skeleton, Timeline } from '@/components/ui';
+import { useQuery } from '@tanstack/react-query';
+import { useT } from '@/lib/i18n';
+import { api } from '@/lib/api';
+import { Badge, Card, EmptyState, ErrorState, Skeleton, StatusChip, Timeline } from '@/components/ui';
+
+type Ticket = {
+  id: string; ref_no: string; work_id: string; work_title: string; kind: string; text: string;
+  status: string; current_level: number; created_at: string; photo_url?: string | null;
+  history: { id: string; status: string; message?: string | null; at: string; is_public: boolean }[];
+};
 
 export default function TicketDetail({ params }: { params: { ref_no: string } }) {
-  const { data: ticket, isLoading, isError, refetch } = useQuery({
+  const { t, formatDate } = useT();
+  const [ready, setReady] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [photoSrc, setPhotoSrc] = useState('');
+  useEffect(() => {
+    setLoggedIn(Boolean(localStorage.getItem('access_token')));
+    setReady(true);
+  }, []);
+  const query = useQuery({
     queryKey: ['feedback', params.ref_no],
-    queryFn: () => api<any>(`/feedback/${params.ref_no}`)
+    enabled: ready && loggedIn,
+    queryFn: () => api<Ticket>(`/feedback/${encodeURIComponent(params.ref_no)}`),
   });
+  const ticket = query.data;
 
-  if (isLoading) return <div className="max-w-3xl mx-auto p-4"><Skeleton className="h-64" /></div>;
-  if (isError || !ticket) return <div className="max-w-3xl mx-auto p-4"><ErrorState onRetry={() => refetch()} /></div>;
+  useEffect(() => {
+    if (!ticket?.photo_url) return;
+    const token = localStorage.getItem('access_token');
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000/api/v1';
+    const photoUrl = new URL(ticket.photo_url, apiBase).toString();
+    let objectUrl = '';
+    let cancelled = false;
+    void fetch(photoUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => { if (!response.ok) throw new Error('Photo unavailable'); return response.blob(); })
+      .then((blob) => { objectUrl = URL.createObjectURL(blob); if (!cancelled) setPhotoSrc(objectUrl); })
+      .catch(() => setPhotoSrc(''));
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [ticket?.photo_url]);
 
-  const timelineItems = (ticket.events || []).map((e: any) => ({
-    id: e.id,
-    title: e.status ? `Status changed to ${e.status}` : 'Update',
-    detail: e.message,
-    date: e.at,
-    by: e.responder_dept || 'System'
+  if (!ready || (loggedIn && query.isLoading)) return <main className="page-wrap page-narrow"><Skeleton className="skeleton-card"/></main>;
+  if (!loggedIn) return <main className="page-wrap page-narrow"><EmptyState title={t('login')} detail={t('signInToView')} action={<Link className="ui-button ui-button-primary" href={`/login?returnTo=${encodeURIComponent(`/feedback/${params.ref_no}`)}`}>{t('login')}</Link>}/></main>;
+  if (query.isError || !ticket) return <main className="page-wrap page-narrow"><ErrorState onRetry={() => void query.refetch()}/></main>;
+
+  const timeline = [...ticket.history].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()).map((event) => ({
+    id: event.id,
+    title: t(event.status),
+    detail: event.message || undefined,
+    date: event.at,
+    by: event.is_public ? t('publicResponse') : t('statusUpdate'),
   }));
+  const firstResponse = new Date(ticket.created_at);
+  firstResponse.setDate(firstResponse.getDate() + 3);
 
-  // Add initial received event
-  timelineItems.push({
-    id: 'init',
-    title: 'Received',
-    detail: ticket.text,
-    date: ticket.created_at,
-    by: 'You'
-  });
-
-  // Sort descending
-  timelineItems.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  // Dummy SLA calculation
-  const slaDate = new Date(ticket.created_at);
-  slaDate.setDate(slaDate.getDate() + 3);
-
-  return (
-    <div className="max-w-3xl mx-auto p-4 flex flex-col gap-6 pb-20">
-      <div className="flex flex-col gap-2 border-b pb-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="font-mono font-bold text-blue-700 mb-1">{ticket.ref_no}</div>
-            <h1 className="text-2xl font-bold capitalize">{ticket.kind}</h1>
-          </div>
-          <StatusChip status={ticket.status} />
-        </div>
-        <p className="text-gray-700 mt-2 p-4 bg-gray-50 rounded-lg whitespace-pre-wrap">{ticket.text}</p>
-        {ticket.photo_url && (
-          <img src={ticket.photo_url} alt="Attached evidence" className="mt-2 rounded max-w-sm border" />
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2">
-          <Card className="p-6">
-            <h2 className="text-lg font-bold mb-4">Resolution Timeline</h2>
-            <Timeline items={timelineItems} />
-          </Card>
-        </div>
-        <div className="flex flex-col gap-4">
-          <Card className="p-4 bg-blue-50 border-blue-100">
-            <h3 className="font-bold text-blue-900 mb-2">Service Level Info</h3>
-            <p className="text-sm text-blue-800">
-              Expected first response by: <br/>
-              <strong>{slaDate.toLocaleDateString()}</strong>
-            </p>
-            {ticket.current_level > 1 && (
-              <div className="mt-2 block">
-                <Badge tone="warning">
-                  Escalated to Level {ticket.current_level}
-                </Badge>
-              </div>
-            )}
-          </Card>
-
-          {ticket.work_id && (
-            <Card className="p-4">
-              <h3 className="font-bold mb-2">Linked Project</h3>
-              <Link href={`/works/${ticket.work_id}`} className="text-blue-600 hover:underline text-sm">
-                View Project Details +'
-              </Link>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <main className="page-wrap page-narrow grid gap-5">
+    <header className="grid gap-2 border-b border-slate-200 pb-4">
+      <span className="font-mono font-bold text-teal-800">{ticket.ref_no}</span>
+      <h1 className="page-title">{t('ticketDetails')}</h1>
+      <div className="flex flex-wrap items-center gap-2"><StatusChip status={ticket.status} label={t(ticket.status)}/><Badge>{t(ticket.kind)}</Badge>{ticket.current_level > 1 && <Badge tone="warning">{t('escalatedLevel').replace('{level}', String(ticket.current_level))}</Badge>}</div>
+      <p className="whitespace-pre-wrap rounded-xl bg-white p-4">{ticket.text}</p>
+      {photoSrc && <img src={photoSrc} alt={t('attachedFeedbackPhoto')} className="max-h-96 w-fit rounded-xl border"/>}
+      <Link href={`/works/${ticket.work_id}`} className="font-semibold">{ticket.work_title} · {t('openDetails')}</Link>
+    </header>
+    <Card><h2 className="mb-4 text-xl font-bold">{t('resolutionTimeline')}</h2>{timeline.length ? <Timeline items={timeline}/> : <EmptyState title={t('noHistory')}/>}</Card>
+    <Card className="bg-teal-50"><h2 className="font-bold">{t('serviceLevel')}</h2><p className="text-sm">{t('firstResponseBy')}: <strong>{formatDate(firstResponse.toISOString())}</strong></p></Card>
+  </main>;
 }
