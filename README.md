@@ -1,25 +1,36 @@
-# Public Works Transparency Platform
+# InfraLink — Public Works Transparency Demo
 
-Hackathon monorepo scaffold for the Pune-like Demo City tenant.
+InfraLink publishes public infrastructure works, schedules, progress, disruptions, maps, and resident feedback for a demo city. The demo runs with `DEV_MODE=true` so presenters can use the visible **Demo mode** banner and `/api/v1/dev/advance-time`; do not use this configuration for real public data.
 
-## Quickstart
+## Run locally
 
-1. Copy `.env.example` to `.env`.
-2. Run `docker compose up --build`.
-3. Open the frontend at <http://localhost:3000>, API docs at <http://localhost:8000/docs>, and the mock API at <http://localhost:4000/works>.
-4. In another terminal run `make seed` to add demo agencies, wards, and accounts.
-
-The real API base is `http://localhost:8000/api/v1`. To build the resident UI before backend work lands, set `NEXT_PUBLIC_API_BASE=http://localhost:4000` in `.env` and restart the frontend. The mock server listens on port 4000 and provides representative public read responses.
+Copy `.env.example` to `.env`, then run `docker compose up --build` and `make seed`. Open `http://localhost:3000`; API docs are at `http://localhost:8000/docs`. For the production-like Caddy stack, set strong secrets and `CORS_ORIGINS` in `.env`, then run `make prod-up`. Set `SITE_ADDRESS=your.domain` for Caddy-managed HTTPS, or leave `:80` for plain HTTP demo use. See [DEPLOYMENT.md](DEPLOYMENT.md) for Render setup, environment variables, backups, and reset.
 
 ## Demo accounts
 
-Staff passwords are `demo1234`; the seeded junior engineer is `je.ward1@demo.city`. Resident OTP is `123456` after requesting an OTP; the code is logged by the API.
+- Staff: `admin@demo.city` (or `je.ward1@demo.city`, `commissioner@demo.city`); password `demo1234`.
+- Resident: request an OTP for `9000000001`–`9000000005`; demo OTP is `123456`.
+- Demo credentials and OTP are intentionally predictable. Keep the app on demo data and restrict access if presenting privately.
 
-## Commands
+## Architecture
 
-- `make up` / `make down`: start or stop the stack.
-- `make seed`: idempotently seed reference data and demo users.
-- `make openapi`: export the API contract to `backend/openapi.json`.
-- `make test`: run backend tests.
+```mermaid
+flowchart LR
+  Browser --> Proxy[Render TLS edge / Caddy]
+  Proxy --> Web[Next.js portal]
+  Web --> API[FastAPI API]
+  API --> DB[(PostgreSQL + PostGIS)]
+  API --> Uploads[(Persistent uploads)]
+```
 
-PostgreSQL data persists in `pgdata`; uploaded files persist in the `uploads` volume.
+## Module ownership
+
+| Owner | Modules / areas |
+| --- | --- |
+| Ambadas | Core, organisations, project registry, schedule/milestones, audit, admin/config, imports/seed; staff works/import/audit and field PWA |
+| Aayushya | Geo-spatial, permits, conflict engine, evidence, feedback, notifications, reporting, open data; staff conflicts and related workflows |
+| Hitesh | Resident portal, shared UI components, frontend API client, and translations |
+
+## Handy commands
+
+`make seed` seeds demo accounts and works; `make demo-reset` restores seed data; `make backup` writes a custom-format database dump; `make test` runs backend tests.
