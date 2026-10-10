@@ -6,7 +6,7 @@ import { Card, Button, Skeleton, EmptyState, ErrorState } from '@/components/ui'
 import { Download } from 'lucide-react';
 
 type Summary={total:number;ongoing:number;delayed:number;overdue_updates:number;completed_this_month:number};
-const apiBase=process.env.NEXT_PUBLIC_API_BASE??'http://localhost:4000/api/v1';
+const apiBase=process.env.NEXT_PUBLIC_API_BASE??'/api/v1';
 export default function DashboardPage() {
   const {t}=useT();
   const query=useQuery({queryKey:['dashboard'],queryFn:()=>api<Summary>('/reports/summary')});

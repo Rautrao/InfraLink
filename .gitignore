@@ -24,6 +24,7 @@ coverage/
 data/uploads/*
 !data/uploads/.gitkeep
 *.log
+backups/
 
 # Operating system and editor files.
 .DS_Store
